@@ -1,0 +1,1016 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>My GoodNotes - Web Note & PDF Annotation</title>
+  <meta name="description" content="Goodnotes風のPDF注釈・手書きノートWebアプリケーション" />
+  <meta name="theme-color" content="#4f46e5" />
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- PDF.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --surface: #ffffff;
+      --bg: #f8fafc;
+      --border: #e2e8f0;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* 上部ヘッダー & ツールバー */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: 60px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 20;
+      flex-shrink: 0;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    }
+
+    .header-left, .header-center, .header-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .app-title-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--primary);
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: center;
+      background: #f1f5f9;
+      border-radius: var(--radius);
+      padding: 4px;
+      gap: 3px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: #e2e8f0;
+      color: var(--text-main);
+    }
+
+    .btn.active {
+      background: var(--surface);
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      border-color: #cbd5e1;
+    }
+
+    .btn-icon {
+      padding: 8px;
+      width: 38px;
+      height: 38px;
+    }
+
+    /* 図形補正トグルボタン (ON/OFF) */
+    #btn-shape-correction {
+      border: 1px solid var(--border);
+    }
+    #btn-shape-correction.active {
+      background-color: #059669;
+      color: #ffffff;
+      border-color: #047857;
+      box-shadow: 0 1px 3px rgba(5, 150, 105, 0.3);
+    }
+    .badge-status {
+      font-size: 10px;
+      font-weight: 800;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #e2e8f0;
+      color: #475569;
+    }
+    #btn-shape-correction.active .badge-status {
+      background: rgba(255, 255, 255, 0.25);
+      color: #ffffff;
+    }
+
+    /* カラーパレットスロット */
+    .color-slot {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 0 0 1px #cbd5e1;
+      transition: transform 0.1s ease;
+    }
+    .color-slot.active {
+      transform: scale(1.15);
+      box-shadow: 0 0 0 2px var(--primary);
+    }
+
+    /* 太さスロット */
+    .width-slot {
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+    }
+    .width-slot.active {
+      background: var(--surface);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    .width-circle {
+      background: var(--text-main);
+      border-radius: 50%;
+    }
+
+    /* メインキャンバス領域 */
+    #canvas-container {
+      flex: 1;
+      overflow: auto;
+      position: relative;
+      background: #94a3b8;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      touch-action: none;
+    }
+
+    .paper-sheet {
+      position: relative;
+      background: #ffffff;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+
+    #bg-canvas { z-index: 1; }
+    #draw-canvas { z-index: 2; }
+    #overlay-canvas { z-index: 3; pointer-events: none; }
+
+    /* 下部ページナビゲーター */
+    footer {
+      height: 48px;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 20px;
+      z-index: 20;
+      flex-shrink: 0;
+      font-size: 13px;
+    }
+
+    .save-indicator {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: #059669;
+    }
+
+    /* モーダル */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.6);
+      backdrop-filter: blur(4px);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 50;
+      padding: 16px;
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .modal-window {
+      background: #ffffff;
+      border-radius: 16px;
+      max-width: 480px;
+      width: 100%;
+      overflow: hidden;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+    }
+    .modal-body {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .upload-box {
+      border: 2px dashed #818cf8;
+      background: #e0e7ff33;
+      border-radius: 12px;
+      padding: 32px 16px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .upload-box:hover {
+      border-color: var(--primary);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 上部ツールバー -->
+  <header>
+    <div class="header-left">
+      <div class="app-title-badge">
+        <i data-lucide="book-open" style="width: 20px; height: 20px;"></i>
+        <span>My GoodNotes</span>
+      </div>
+
+      <!-- ツール選択 -->
+      <div class="toolbar-group">
+        <button class="btn btn-icon active" id="tool-pen" title="ボールペン">
+          <i data-lucide="pen-tool" style="width: 18px; height: 18px;"></i>
+        </button>
+        <button class="btn btn-icon" id="tool-highlighter" title="蛍光マーカー">
+          <i data-lucide="highlighter" style="width: 18px; height: 18px;"></i>
+        </button>
+        <button class="btn btn-icon" id="tool-eraser" title="消しゴム">
+          <i data-lucide="eraser" style="width: 18px; height: 18px;"></i>
+        </button>
+      </div>
+
+      <!-- 図形補正（シェイプアシスト）トグル -->
+      <button class="btn" id="btn-shape-correction" title="手書き線の自動直線・幾何図形補正">
+        <i data-lucide="shapes" style="width: 16px; height: 16px;"></i>
+        <span>図形補正</span>
+        <span class="badge-status" id="badge-shape-status">OFF</span>
+      </button>
+    </div>
+
+    <!-- 中央：カラー＆太さプリセット -->
+    <div class="header-center">
+      <!-- 3色クイックスロット -->
+      <div class="toolbar-group">
+        <div class="color-slot active" data-color="#0f172a" style="background: #0f172a;" title="ブラック"></div>
+        <div class="color-slot" data-color="#2563eb" style="background: #2563eb;" title="ブルー"></div>
+        <div class="color-slot" data-color="#dc2626" style="background: #dc2626;" title="レッド"></div>
+      </div>
+
+      <!-- 3段階太さスロット -->
+      <div class="toolbar-group">
+        <div class="width-slot" data-width="2" title="細い (2px)">
+          <div class="width-circle" style="width: 4px; height: 4px;"></div>
+        </div>
+        <div class="width-slot active" data-width="5" title="普通 (5px)">
+          <div class="width-circle" style="width: 8px; height: 8px;"></div>
+        </div>
+        <div class="width-slot" data-width="12" title="太い (12px)">
+          <div class="width-circle" style="width: 14px; height: 14px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右側：用紙・インポート・履歴操作 -->
+    <div class="header-right">
+      <!-- 用紙スタイル変更 -->
+      <select id="select-paper-style" class="btn" style="padding: 6px 10px; border: 1px solid var(--border);">
+        <option value="grid">方眼紙 (Grid)</option>
+        <option value="ruled">横罫線 (Ruled)</option>
+        <option value="plain">白紙 (Blank)</option>
+      </select>
+
+      <!-- 取り消し・やり直し -->
+      <button class="btn btn-icon" id="btn-undo" title="元に戻す (Undo)">
+        <i data-lucide="undo-2" style="width: 18px; height: 18px;"></i>
+      </button>
+      <button class="btn btn-icon" id="btn-redo" title="やり直す (Redo)">
+        <i data-lucide="redo-2" style="width: 18px; height: 18px;"></i>
+      </button>
+
+      <!-- PDFインポートモーダル起動 -->
+      <button class="btn" id="btn-open-pdf-modal" style="background: var(--primary); color: white;">
+        <i data-lucide="file-up" style="width: 16px; height: 16px;"></i>
+        <span>PDF読込</span>
+      </button>
+
+      <button class="btn btn-icon" id="btn-clear" title="全消去">
+        <i data-lucide="trash-2" style="width: 18px; height: 18px;"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- キャンバス領域 -->
+  <main id="canvas-container">
+    <div class="paper-sheet" id="paper-sheet" style="width: 800px; height: 1100px;">
+      <canvas id="bg-canvas"></canvas>
+      <canvas id="draw-canvas"></canvas>
+      <canvas id="overlay-canvas"></canvas>
+    </div>
+  </main>
+
+  <!-- 下部フッター（ページ操作・自動保存ステータス） -->
+  <footer>
+    <div class="save-indicator">
+      <i data-lucide="check-circle" style="width: 14px; height: 14px;"></i>
+      <span id="save-status-text">IndexedDB 接続中</span>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 12px;">
+      <button class="btn btn-icon" id="btn-prev-page" title="前のページ">
+        <i data-lucide="chevron-left" style="width: 16px; height: 16px;"></i>
+      </button>
+      <span id="page-counter" style="font-weight: 700;">1 / 1</span>
+      <button class="btn btn-icon" id="btn-next-page" title="次のページ">
+        <i data-lucide="chevron-right" style="width: 16px; height: 16px;"></i>
+      </button>
+      <button class="btn" id="btn-add-page" style="padding: 4px 10px; font-size: 12px;">
+        <i data-lucide="plus" style="width: 14px; height: 14px;"></i>
+        <span>ページ追加</span>
+      </button>
+    </div>
+  </footer>
+
+  <!-- PDFインポートモーダル -->
+  <div class="modal-backdrop" id="pdf-modal">
+    <div class="modal-window">
+      <div class="modal-header">
+        <span>PDF / 画像ファイルの読み込み</span>
+        <button class="btn btn-icon" id="btn-close-modal">
+          <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+        </button>
+      </div>
+      <div class="modal-body">
+        <input type="file" id="pdf-file-input" accept="application/pdf,image/*" style="display: none;" />
+        <div class="upload-box" id="upload-box">
+          <i data-lucide="upload-cloud" style="width: 36px; height: 36px; color: var(--primary); margin: 0 auto 8px;"></i>
+          <p style="font-weight: 700; margin-bottom: 4px;">ここをクリックしてPDFを選択</p>
+          <p style="font-size: 12px; color: var(--text-muted);">PDFまたは画像ファイルをノート背景として配置します</p>
+        </div>
+        <button class="btn" id="btn-reset-paper" style="width: 100%; border: 1px solid var(--border); justify-content: center;">
+          <i data-lucide="file" style="width: 16px; height: 16px;"></i>
+          <span>通常のノート用紙に戻す</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ==========================================================================
+       1. IndexedDB 永続化ストレージ層
+       ========================================================================== */
+    const DB_NAME = 'NotesDB';
+    const STORE_NAME = 'notes';
+    const DB_VERSION = 1;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+        request.onupgradeneeded = (e) => {
+          const db = e.target.result;
+          if (!db.objectStoreNames.contains(STORE_NAME)) {
+            db.createObjectStore(STORE_NAME, { keyPath: 'id' });
+          }
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    }
+
+    async function saveNoteData(noteId, data) {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readwrite');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.put({ id: noteId, data, updatedAt: Date.now() });
+        req.onsuccess = () => resolve(true);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    async function loadNoteData(noteId) {
+      const db = await initDB();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(STORE_NAME, 'readonly');
+        const store = tx.objectStore(STORE_NAME);
+        const req = store.get(noteId);
+        req.onsuccess = () => resolve(req.result ? req.result.data : null);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    /* ==========================================================================
+       2. アプリ状態管理 (State)
+       ========================================================================== */
+    const state = {
+      currentTool: 'pen', // 'pen' | 'highlighter' | 'eraser'
+      currentColor: '#0f172a',
+      currentWidth: 5,
+      isShapeCorrectionEnabled: false,
+      paperStyle: 'grid', // 'grid' | 'ruled' | 'plain'
+      currentPageIndex: 0,
+      pages: [
+        {
+          id: 'page-1',
+          bgImage: null, // PDFデータURL
+          strokes: []
+        }
+      ],
+      undoStack: [],
+      redoStack: [],
+      isDrawing: false,
+      currentPoints: []
+    };
+
+    // PDF.js ワーカー設定
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+
+    /* ==========================================================================
+       3. DOM要素の参照
+       ========================================================================== */
+    const paperSheet = document.getElementById('paper-sheet');
+    const bgCanvas = document.getElementById('bg-canvas');
+    const drawCanvas = document.getElementById('draw-canvas');
+    const overlayCanvas = document.getElementById('overlay-canvas');
+
+    const bgCtx = bgCanvas.getContext('2d');
+    const drawCtx = drawCanvas.getContext('2d');
+    const overlayCtx = overlayCanvas.getContext('2d');
+
+    const btnShapeCorrection = document.getElementById('btn-shape-correction');
+    const badgeShapeStatus = document.getElementById('badge-shape-status');
+    const pageCounter = document.getElementById('page-counter');
+    const saveStatusText = document.getElementById('save-status-text');
+
+    /* ==========================================================================
+       4. キャンバス解像度と描画初期化
+       ========================================================================== */
+    function resizeCanvases() {
+      const dpr = window.devicePixelRatio || 1;
+      const width = paperSheet.clientWidth;
+      const height = paperSheet.clientHeight;
+
+      [bgCanvas, drawCanvas, overlayCanvas].forEach(c => {
+        c.width = width * dpr;
+        c.height = height * dpr;
+      });
+
+      bgCtx.scale(dpr, dpr);
+      drawCtx.scale(dpr, dpr);
+      overlayCtx.scale(dpr, dpr);
+
+      renderBackground();
+      redrawAllStrokes();
+    }
+
+    // 用紙スタイルまたはPDF背景のレンダリング
+    function renderBackground() {
+      const width = paperSheet.clientWidth;
+      const height = paperSheet.clientHeight;
+      bgCtx.clearRect(0, 0, width, height);
+
+      const currentPage = state.pages[state.currentPageIndex];
+
+      // PDF画像背景がある場合
+      if (currentPage && currentPage.bgImage) {
+        const img = new Image();
+        img.onload = () => {
+          bgCtx.drawImage(img, 0, 0, width, height);
+        };
+        img.src = currentPage.bgImage;
+        return;
+      }
+
+      // 通常のノート用紙パターンの描画
+      if (state.paperStyle === 'grid') {
+        bgCtx.strokeStyle = '#e2e8f0';
+        bgCtx.lineWidth = 1;
+        const step = 25;
+        bgCtx.beginPath();
+        for (let x = 0; x <= width; x += step) {
+          bgCtx.moveTo(x, 0);
+          bgCtx.lineTo(x, height);
+        }
+        for (let y = 0; y <= height; y += step) {
+          bgCtx.moveTo(0, y);
+          bgCtx.lineTo(width, y);
+        }
+        bgCtx.stroke();
+      } else if (state.paperStyle === 'ruled') {
+        bgCtx.strokeStyle = '#e2e8f0';
+        bgCtx.lineWidth = 1;
+        const lineSpacing = 32;
+        bgCtx.beginPath();
+        for (let y = 60; y <= height; y += lineSpacing) {
+          bgCtx.moveTo(0, y);
+          bgCtx.lineTo(width, y);
+        }
+        bgCtx.stroke();
+      }
+    }
+
+    // 全ストロークの再描画
+    function redrawAllStrokes() {
+      const width = paperSheet.clientWidth;
+      const height = paperSheet.clientHeight;
+      drawCtx.clearRect(0, 0, width, height);
+
+      const page = state.pages[state.currentPageIndex];
+      if (!page) return;
+
+      page.strokes.forEach(stroke => {
+        drawSingleStroke(drawCtx, stroke);
+      });
+    }
+
+    function drawSingleStroke(ctx, stroke) {
+      if (!stroke.points || stroke.points.length === 0) return;
+
+      ctx.save();
+      ctx.beginPath();
+      ctx.strokeStyle = stroke.color;
+      ctx.lineWidth = stroke.width;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+
+      if (stroke.tool === 'highlighter') {
+        ctx.globalAlpha = 0.35;
+        ctx.strokeStyle = '#facc15'; // 蛍光イエロー
+        ctx.lineWidth = 20;
+      } else {
+        ctx.globalAlpha = 1.0;
+      }
+
+      if (stroke.points.length === 1) {
+        ctx.fillStyle = stroke.color;
+        ctx.arc(stroke.points[0].x, stroke.points[0].y, stroke.width / 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
+
+      ctx.moveTo(stroke.points[0].x, stroke.points[0].y);
+      for (let i = 1; i < stroke.points.length; i++) {
+        ctx.lineTo(stroke.points[i].x, stroke.points[i].y);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* ==========================================================================
+       5. 幾何図形認識・直線補正（Shape Assist）アルゴリズム
+       ========================================================================== */
+    function recognizeShape(points) {
+      if (points.length < 8) return null;
+
+      const pStart = points[0];
+      const pEnd = points[points.length - 1];
+      const dist = Math.hypot(pEnd.x - pStart.x, pEnd.y - pStart.y);
+
+      let totalPathLength = 0;
+      for (let i = 1; i < points.length; i++) {
+        totalPathLength += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y);
+      }
+
+      // 直線判定
+      if (dist > 30 && dist / totalPathLength > 0.88) {
+        return [pStart, pEnd];
+      }
+
+      // 閉じた図形 (始点と終点が近い)
+      if (dist < 40 && totalPathLength > 80) {
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        points.forEach(p => {
+          minX = Math.min(minX, p.x);
+          maxX = Math.max(maxX, p.x);
+          minY = Math.min(minY, p.y);
+          maxY = Math.max(maxY, p.y);
+        });
+
+        const w = maxX - minX;
+        const h = maxY - minY;
+        const cx = minX + w / 2;
+        const cy = minY + h / 2;
+
+        // 正円・楕円化
+        const circlePoints = [];
+        const steps = 36;
+        for (let i = 0; i <= steps; i++) {
+          const theta = (i / steps) * Math.PI * 2;
+          circlePoints.push({
+            x: cx + (w / 2) * Math.cos(theta),
+            y: cy + (h / 2) * Math.sin(theta)
+          });
+        }
+        return circlePoints;
+      }
+
+      return null;
+    }
+
+    /* ==========================================================================
+       6. ポインター（手書き）イベント処理
+       ========================================================================== */
+    function getCanvasPoint(e) {
+      const rect = paperSheet.getBoundingClientRect();
+      return {
+        x: e.clientX - rect.left,
+        y: e.clientY - rect.top
+      };
+    }
+
+    paperSheet.addEventListener('pointerdown', (e) => {
+      state.isDrawing = true;
+      state.currentPoints = [getCanvasPoint(e)];
+
+      if (state.currentTool === 'eraser') {
+        eraseAtPoint(state.currentPoints[0]);
+      }
+    });
+
+    paperSheet.addEventListener('pointermove', (e) => {
+      if (!state.isDrawing) return;
+      const pt = getCanvasPoint(e);
+
+      if (state.currentTool === 'eraser') {
+        eraseAtPoint(pt);
+        return;
+      }
+
+      state.currentPoints.push(pt);
+
+      // リアルタイムプレビューを overlayCanvas に描画
+      const width = paperSheet.clientWidth;
+      const height = paperSheet.clientHeight;
+      overlayCtx.clearRect(0, 0, width, height);
+
+      drawSingleStroke(overlayCtx, {
+        tool: state.currentTool,
+        color: state.currentColor,
+        width: state.currentWidth,
+        points: state.currentPoints
+      });
+    });
+
+    paperSheet.addEventListener('pointerup', async () => {
+      if (!state.isDrawing) return;
+      state.isDrawing = false;
+      overlayCtx.clearRect(0, 0, paperSheet.clientWidth, paperSheet.clientHeight);
+
+      if (state.currentTool === 'eraser') return;
+      if (state.currentPoints.length === 0) return;
+
+      let finalPoints = state.currentPoints;
+
+      // 図形補正がONの場合のみ自動直線・図形化
+      if (state.isShapeCorrectionEnabled) {
+        const corrected = recognizeShape(finalPoints);
+        if (corrected) finalPoints = corrected;
+      }
+
+      const newStroke = {
+        id: 'stroke-' + Date.now(),
+        tool: state.currentTool,
+        color: state.currentColor,
+        width: state.currentWidth,
+        points: finalPoints
+      };
+
+      const page = state.pages[state.currentPageIndex];
+      page.strokes.push(newStroke);
+      state.undoStack.push(JSON.parse(JSON.stringify(page.strokes)));
+      state.redoStack = [];
+
+      redrawAllStrokes();
+      await triggerAutoSave();
+    });
+
+    // 消しゴム処理（ヒットしたストロークの削除）
+    function eraseAtPoint(pt) {
+      const page = state.pages[state.currentPageIndex];
+      const threshold = 16;
+      const beforeLen = page.strokes.length;
+
+      page.strokes = page.strokes.filter(stroke => {
+        return !stroke.points.some(p => Math.hypot(p.x - pt.x, p.y - pt.y) < threshold);
+      });
+
+      if (page.strokes.length !== beforeLen) {
+        redrawAllStrokes();
+        triggerAutoSave();
+      }
+    }
+
+    /* ==========================================================================
+       7. UI操作・ツールバーイベント
+       ========================================================================== */
+    // ツール切り替え (Pen / Highlighter / Eraser)
+    const toolBtns = {
+      pen: document.getElementById('tool-pen'),
+      highlighter: document.getElementById('tool-highlighter'),
+      eraser: document.getElementById('tool-eraser')
+    };
+
+    function setActiveTool(tool) {
+      state.currentTool = tool;
+      Object.keys(toolBtns).forEach(k => toolBtns[k].classList.remove('active'));
+      toolBtns[tool].classList.add('active');
+    }
+
+    toolBtns.pen.addEventListener('click', () => setActiveTool('pen'));
+    toolBtns.highlighter.addEventListener('click', () => setActiveTool('highlighter'));
+    toolBtns.eraser.addEventListener('click', () => setActiveTool('eraser'));
+
+    // 図形補正トグルボタン
+    btnShapeCorrection.addEventListener('click', () => {
+      state.isShapeCorrectionEnabled = !state.isShapeCorrectionEnabled;
+      if (state.isShapeCorrectionEnabled) {
+        btnShapeCorrection.classList.add('active');
+        badgeShapeStatus.textContent = 'ON';
+      } else {
+        btnShapeCorrection.classList.remove('active');
+        badgeShapeStatus.textContent = 'OFF';
+      }
+    });
+
+    // カラーパレット切り替え
+    document.querySelectorAll('.color-slot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        document.querySelectorAll('.color-slot').forEach(s => s.classList.remove('active'));
+        slot.classList.add('active');
+        state.currentColor = slot.getAttribute('data-color');
+        if (state.currentTool === 'eraser') setActiveTool('pen');
+      });
+    });
+
+    // 太さ切り替え
+    document.querySelectorAll('.width-slot').forEach(slot => {
+      slot.addEventListener('click', () => {
+        document.querySelectorAll('.width-slot').forEach(s => s.classList.remove('active'));
+        slot.classList.add('active');
+        state.currentWidth = parseInt(slot.getAttribute('data-width'), 10);
+      });
+    });
+
+    // 用紙スタイル変更
+    document.getElementById('select-paper-style').addEventListener('change', (e) => {
+      state.paperStyle = e.target.value;
+      renderBackground();
+      triggerAutoSave();
+    });
+
+    // Undo / Redo
+    document.getElementById('btn-undo').addEventListener('click', () => {
+      const page = state.pages[state.currentPageIndex];
+      if (page.strokes.length > 0) {
+        state.redoStack.push(page.strokes.pop());
+        redrawAllStrokes();
+        triggerAutoSave();
+      }
+    });
+
+    document.getElementById('btn-redo').addEventListener('click', () => {
+      const page = state.pages[state.currentPageIndex];
+      if (state.redoStack.length > 0) {
+        page.strokes.push(state.redoStack.pop());
+        redrawAllStrokes();
+        triggerAutoSave();
+      }
+    });
+
+    document.getElementById('btn-clear').addEventListener('click', () => {
+      if (confirm('このページの描画をすべてクリアしますか？')) {
+        state.pages[state.currentPageIndex].strokes = [];
+        redrawAllStrokes();
+        triggerAutoSave();
+      }
+    });
+
+    /* ==========================================================================
+       8. ページ操作
+       ========================================================================== */
+    function updatePageIndicator() {
+      pageCounter.textContent = `${state.currentPageIndex + 1} / ${state.pages.length}`;
+    }
+
+    document.getElementById('btn-prev-page').addEventListener('click', () => {
+      if (state.currentPageIndex > 0) {
+        state.currentPageIndex--;
+        updatePageIndicator();
+        renderBackground();
+        redrawAllStrokes();
+      }
+    });
+
+    document.getElementById('btn-next-page').addEventListener('click', () => {
+      if (state.currentPageIndex < state.pages.length - 1) {
+        state.currentPageIndex++;
+        updatePageIndicator();
+        renderBackground();
+        redrawAllStrokes();
+      }
+    });
+
+    document.getElementById('btn-add-page').addEventListener('click', () => {
+      state.pages.push({
+        id: 'page-' + (state.pages.length + 1),
+        bgImage: null,
+        strokes: []
+      });
+      state.currentPageIndex = state.pages.length - 1;
+      updatePageIndicator();
+      renderBackground();
+      redrawAllStrokes();
+      triggerAutoSave();
+    });
+
+    /* ==========================================================================
+       9. PDFファイル読み込み・ラスタライズ
+       ========================================================================== */
+    const pdfModal = document.getElementById('pdf-modal');
+    const pdfFileInput = document.getElementById('pdf-file-input');
+
+    document.getElementById('btn-open-pdf-modal').addEventListener('click', () => {
+      pdfModal.classList.add('open');
+    });
+
+    document.getElementById('btn-close-modal').addEventListener('click', () => {
+      pdfModal.classList.remove('open');
+    });
+
+    document.getElementById('upload-box').addEventListener('click', () => {
+      pdfFileInput.click();
+    });
+
+    document.getElementById('btn-reset-paper').addEventListener('click', () => {
+      state.pages[state.currentPageIndex].bgImage = null;
+      renderBackground();
+      pdfModal.classList.remove('open');
+      triggerAutoSave();
+    });
+
+    pdfFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      if (file.type === 'application/pdf') {
+        saveStatusText.textContent = 'PDF読み込み中...';
+        const reader = new FileReader();
+        reader.onload = async function() {
+          const typedarray = new Uint8Array(this.result);
+          const pdf = await pdfjsLib.getDocument(typedarray).promise;
+
+          state.pages = [];
+          for (let pNum = 1; pNum <= pdf.numPages; pNum++) {
+            const page = await pdf.getPage(pNum);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const offscreenCanvas = document.createElement('canvas');
+            offscreenCanvas.width = viewport.width;
+            offscreenCanvas.height = viewport.height;
+            const offCtx = offscreenCanvas.getContext('2d');
+
+            await page.render({ canvasContext: offCtx, viewport: viewport }).promise;
+
+            state.pages.push({
+              id: 'pdf-page-' + pNum,
+              bgImage: offscreenCanvas.toDataURL('image/jpeg', 0.85),
+              strokes: []
+            });
+          }
+
+          state.currentPageIndex = 0;
+          updatePageIndicator();
+          renderBackground();
+          redrawAllStrokes();
+          pdfModal.classList.remove('open');
+          await triggerAutoSave();
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        // 画像読み込み
+        const reader = new FileReader();
+        reader.onload = function(event) {
+          state.pages[state.currentPageIndex].bgImage = event.target.result;
+          renderBackground();
+          pdfModal.classList.remove('open');
+          triggerAutoSave();
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+
+    /* ==========================================================================
+       10. IndexedDB との同期・初期化
+       ========================================================================== */
+    async function triggerAutoSave() {
+      saveStatusText.textContent = '保存中...';
+      await saveNoteData('active_note_session', {
+        pages: state.pages,
+        paperStyle: state.paperStyle,
+        isShapeCorrectionEnabled: state.isShapeCorrectionEnabled
+      });
+      saveStatusText.textContent = '保存完了 (IndexedDB)';
+    }
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      lucide.createIcons();
+      resizeCanvases();
+
+      try {
+        await initDB();
+        const saved = await loadNoteData('active_note_session');
+        if (saved) {
+          if (saved.pages && saved.pages.length > 0) state.pages = saved.pages;
+          if (saved.paperStyle) {
+            state.paperStyle = saved.paperStyle;
+            document.getElementById('select-paper-style').value = saved.paperStyle;
+          }
+          if (typeof saved.isShapeCorrectionEnabled === 'boolean') {
+            state.isShapeCorrectionEnabled = saved.isShapeCorrectionEnabled;
+            if (state.isShapeCorrectionEnabled) {
+              btnShapeCorrection.classList.add('active');
+              badgeShapeStatus.textContent = 'ON';
+            }
+          }
+          updatePageIndicator();
+          renderBackground();
+          redrawAllStrokes();
+          saveStatusText.textContent = '前回のデータを復元しました';
+        } else {
+          saveStatusText.textContent = '準備完了';
+        }
+      } catch (err) {
+        console.error('IndexedDB初期化エラー:', err);
+        saveStatusText.textContent = 'オフラインストレージ利用可能';
+      }
+    });
+
+    window.addEventListener('resize', resizeCanvases);
+  </script>
+</body>
+</html>
